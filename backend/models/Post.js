@@ -1,4 +1,5 @@
-const config = require('../config'); // Make sure config is imported
+const { Schema, model } = require('mongoose');
+const config = require('../config');
 
 const postSchema = new Schema(
   {
@@ -6,6 +7,7 @@ const postSchema = new Schema(
     slug: { type: String, required: true, unique: true },
     excerpt: { type: String, maxlength: 300, default: '' },
     content: { type: String, required: true },
+    /** Plain-text copy of `content`, used only for search. Never sent to clients. */
     plainText: { type: String, select: false },
     image: {
       url: {
@@ -31,3 +33,10 @@ const postSchema = new Schema(
     toJSON: { getters: true }    // Enables getters when sending JSON responses to the frontend
   },
 );
+
+postSchema.index({ status: 1, publishedAt: -1 });
+postSchema.index({ status: 1, category: 1, publishedAt: -1 });
+postSchema.index({ status: 1, tags: 1, publishedAt: -1 });
+postSchema.index({ createdAt: -1 });
+
+module.exports = model('Post', postSchema);
