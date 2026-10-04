@@ -1,0 +1,86 @@
+# Render Blueprint - deploys the API (web service) and the React site (static site).
+# Dashboard: New + > Blueprint > select this repo. Then fill in every variable marked "sync: false".
+#
+# IMPORTANT: the static site proxies /api and /uploads to the API (rewrite rules below), so the browser
+# only ever talks to ONE https:// origin. That keeps cookies first-party and avoids CORS and
+# mixed-content problems. If you rename the API service, update the two rewrite destinations.
+
+services:
+  # ───────────────────────── Backend: Express API ─────────────────────────
+  - type: web
+    name: df-blogs-api
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: MONGODB_URI
+        sync: false # MongoDB Atlas connection string
+      - key: CLIENT_URL
+        sync: false # https URL of the static site below, e.g. https://df-blogs.onrender.com (no trailing slash)
+      - key: SERVER_URL
+        sync: false # https URL of THIS service, e.g. https://df-blogs-api.onrender.com
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: COOKIE_SAMESITE
+        value: lax
+      # Render's disk is wiped on every deploy/restart, so store uploaded images on Cloudinary.
+      - key: IMAGE_STORAGE
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CLOUDINARY_FOLDER
+        value: df-blogs
+      - key: MAX_UPLOAD_MB
+        value: "2"
+      - key: SITE_NAME
+        value: DF Blogs
+      - key: SITE_CONTACT_EMAIL
+        sync: false
+
+  # ───────────────────────── Frontend: React (Vite) ─────────────────────────
+  - type: web
+    name: df-blogs
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    # VITE_API_URL is intentionally NOT set: the browser calls /api on this same origin (see routes).
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://df-blogs-api.onrender.com/api/*
+      - type: rewrite
+        source: /uploads/*
+        destination: https://df-blogs-api.onrender.com/uploads/*
+      - type: rewrite
+        source: /sitemap.xml
+        destination: https://df-blogs-api.onrender.com/sitemap.xml
+      # Single-page-app fallback: lets /blog/my-post work on refresh. Must stay LAST.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
